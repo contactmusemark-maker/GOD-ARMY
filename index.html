@@ -60,6 +60,15 @@ input:focus{border-color:var(--blue);background:#fff}
 #bot a.on::after{content:none}#bot a.on .ci{background:var(--red);color:#fff}#bot a.on .lb{display:inline}
 .poster{text-align:center;padding:10px 0}
 @media print{#top,#bot,.noprint,#toast,#off,body::before{display:none!important}#app{padding:0!important}.poster .qrbox{width:15cm}@page{size:A4;margin:12mm}}
+
+#bot{width:max-content;max-width:94vw;min-width:0;padding:7px;gap:4px;justify-content:center;border-radius:999px;background:#191919;border:1px solid #2c2c2c}
+#bot a{flex:0 1 46px;min-width:38px;height:46px;padding:0;gap:0;justify-content:center;color:#a3a3a3;font-size:14px;font-weight:600;border-radius:999px}
+#bot a:active{transform:scale(.94)}
+#bot a .ci{width:46px;height:46px;flex:none;background:none;border-radius:50%}
+#bot a.on{flex:0 1 auto;min-width:0;max-width:150px;padding:0 16px 0 0;gap:8px;background:#fff;color:#191919;justify-content:flex-start;font-weight:700}
+#bot a.on .ci{width:46px;height:46px;background:var(--red);color:#fff;margin:0}
+#bot a .lb{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media(max-width:360px){#bot a{flex-basis:38px;height:42px}#bot a .ci,#bot a.on .ci{width:42px;height:42px}#bot a.on{padding-right:12px;font-size:13px}}
 </style></head>
 <body>
 <div id="off">You are offline. Attendance cannot be recorded.</div><div id="toast" role="status"></div>
@@ -101,12 +110,20 @@ addEventListener('online',()=>$('#off').style.display='none');addEventListener('
 /* ===== Navigation pills ===== */
 function chrome(kind,title='ARMY FITNESS'){
   $('#top').style.display=$('#bot').style.display=kind?'flex':'none';if(!kind)return;
-  $('#top').innerHTML=`<img src="${LOGO}" alt=""><b>${title}</b>${kind=='admin'?ic('bell'):ic('circle-help')}`;
+  $('#top').innerHTML=`<img src="${LOGO}" alt=""><b>${title}</b>${kind=='admin'?`<button id="bell" aria-label="Notifications" style="position:relative;background:none;border:0;color:inherit;cursor:pointer">${ic('bell')}<span id="bd" class="tag no" style="display:none;position:absolute;top:-8px;right:-10px;padding:1px 6px"></span></button>`:ic('circle-help')}`;
+  if(kind=='admin'){$('#bell').onclick=()=>go('notifications');badge();if(!S.nt)S.nt=sb.channel('nt').on('postgres_changes',{event:'INSERT',schema:'public',table:'admin_notifications'},p=>{toast(p.new.title);badge();if(new URLSearchParams(location.search).get('view')=='notifications')viewNotifications()}).subscribe()}
   const items=kind=='admin'?[['dashboard','layout-dashboard','Dashboard'],['members','users','Members'],['attendance','clipboard-check','Attendance'],['reports','file-text','Reports'],['security','shield-alert','Security']]
     :[['home','house','Home'],['checkin','scan-line','Check-In'],['help','circle-help','Help']];
   const cur=new URLSearchParams(location.search).get('view')||'home';
   $('#bot').innerHTML=items.map(([v,i,l])=>`<a tabindex="0" role="link" data-v="${v}" class="${cur==v?'on':''}"><span class="ci">${ic(i,20)}</span><span class="lb">${l}</span></a>`).join('');
   $('#bot').querySelectorAll('a').forEach(a=>a.onclick=()=>go(a.dataset.v));lucide.createIcons()}
+
+async function badge(){const {count}=await sb.from('admin_notifications').select('*',{count:'exact',head:true}).eq('read',false);const b=$('#bd');if(b){b.textContent=count>99?'99+':count;b.style.display=count?'block':'none'}}
+async function viewNotifications(){if(!await requireAdmin())return;chrome('admin','ALERTS');
+  const {data}=await sb.from('admin_notifications').select('*').order('created_at',{ascending:false}).limit(60);
+  draw(`<h2>NOTIFICATIONS</h2><button class="btn alt" id="mr">${ic('check')} MARK ALL AS READ</button>${(data||[]).map(n=>`<div class="card" data-id="${n.id}" style="${n.read?'':'border-left:5px solid var(--red)'}"><b>${esc(n.title)}</b><div class="sm">${esc(n.body)}</div><div class="sm muted">${dmy(n.created_at)} · ${tm(n.created_at)}</div></div>`).join('')||'<p class="muted">No notifications yet.</p>'}`);
+  $('#mr').onclick=async()=>{await sb.from('admin_notifications').update({read:true}).eq('read',false);viewNotifications()};
+  document.querySelectorAll('[data-id]').forEach(c=>c.onclick=async()=>{await sb.from('admin_notifications').update({read:true}).eq('id',c.dataset.id);viewNotifications()});badge()}
 
 /* ===== PIN pad component ===== */
 function pinPad(done){
@@ -253,7 +270,7 @@ const viewKiosk=viewQrPoster;
 
 /* ===== Router ===== */
 const views={home:viewHome,onboarding:viewOnboarding,checkin:viewCheckin,help:()=>{chrome('member');draw('<h1>NEED HELP?</h1><p class="muted" style="margin-top:10px">Not on the list, or forgot your PIN? Ask the gym owner at the front desk to register or reactivate you.</p>')},
-  admin:viewAdminLogin,dashboard:viewDashboard,members:viewMembers,attendance:viewAttendance,reports:viewReports,security:viewSecurity,kiosk:viewKiosk,qr:viewQrPoster};
+  admin:viewAdminLogin,dashboard:viewDashboard,members:viewMembers,attendance:viewAttendance,reports:viewReports,security:viewSecurity,notifications:viewNotifications,kiosk:viewKiosk,qr:viewQrPoster};
 function route(){const p=new URLSearchParams(location.search);if(p.get('challenge'))S.challenge=p.get('challenge');
   const v=p.get('view')||'home';if(v=='checkin'&&!S.member&&p.get('challenge'))return viewHome();(views[v]||viewHome)()}
 $('#sp').src=LOGO;lucide.createIcons();
